@@ -229,8 +229,8 @@ Deletions are not checked: removing a bookmark publishes no code.
 #### Tugging
 
 Before resolving anything, `jj push` moves the nearest bookmark forward, the
-way the common `tug` alias does — but onto **the closest commit under `@` that
-carries a description**, not onto `@-` whatever it happens to be.
+way the common `tug` alias does — but onto **the most recent commit at or under
+`@` that carries a description**, not onto `@-` whatever it happens to be.
 
 `@-` is very often an empty, undescribed commit: one `jj new` too many, or a
 scratch change left on top. Tugging onto it hands `jj git push` a commit it
@@ -238,14 +238,24 @@ refuses to publish — *Won't push commit … since it has no description* — s
 bookmark ends up parked somewhere nothing can be pushed from. Skipping the
 undescribed commits puts it on the last thing you actually wrote.
 
-The revset is `heads(::@- & ~description(exact:""))`. Two consequences worth
-knowing:
+The revset is `heads(::@ & ~description(exact:""))`. `@` is in it because
+nothing guarantees `@` sits *above* the work — very often it **is** the work,
+described and ready to publish. When `@` has no description it drops out of the
+set on its own, so the common "empty working copy on top" case behaves exactly
+as if the revset had excluded it.
 
-- `@` itself is never a target, described or not. The working copy is
-  in-progress by definition; `jj new` when you want it published.
-- Under a merge with described commits on both sides, that revset has no single
-  answer. Rather than pick one and silently publish a branch you did not name,
-  jj-ci moves nothing and says which commits were ambiguous.
+Two consequences worth knowing:
+
+- **A bookmark tugged onto `@` keeps following `@`.** Editing a file rewrites
+  the working-copy commit, and jj moves bookmarks onto rewritten commits — so
+  the bookmark tracks your edits and the remote falls behind until you push
+  again. That is ordinary jj behaviour, not something jj-ci adds, but it is the
+  price of `@` being a valid target.
+- **Under a merge, the target can be ambiguous.** With described commits on
+  both sides and an undescribed `@`, the revset has no single answer. Rather
+  than pick one and silently publish a branch you did not name, jj-ci moves
+  nothing and says which commits were ambiguous. A described `@` is never
+  ambiguous: it is the only head of its own ancestry.
 
 Backward moves are refused by jj, so a bookmark that already sits ahead of the
 target stays where it is.

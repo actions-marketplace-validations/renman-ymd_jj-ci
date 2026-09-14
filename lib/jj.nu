@@ -9,11 +9,16 @@ use log.nu [warn]
 
 const HEX = '[0-9a-f]{8,64}'
 
-# Where `tug` moves a bookmark to: the closest ancestor of @ with a non-empty
-# description. `description(exact:"")` matches the undescribed commits — the
-# working copy, scratch changes, and the root commit — and `heads` of what is
-# left is the most recent one that is actually publishable.
-const TUG_TARGET = 'heads(::@- & ~description(exact:""))'
+# Where `tug` moves a bookmark to: the most recent commit at or under @ with a
+# non-empty description. `description(exact:"")` matches the undescribed
+# commits — an empty working copy, scratch changes, the root commit — and
+# `heads` of what is left is the most recent one that is actually publishable.
+#
+# @ is included because nothing guarantees it sits above the work: it is
+# frequently the work. When @ has no description it drops out of the set on its
+# own and the nearest described ancestor is chosen instead, so the common case
+# is unaffected.
+const TUG_TARGET = 'heads(::@ & ~description(exact:""))'
 
 export def root []: nothing -> string {
   let r = (^jj --ignore-working-copy root | complete)
@@ -131,8 +136,8 @@ export def fix [revset: string]: nothing -> bool {
 }
 
 # Move the nearest bookmark forward, the way the common `tug` alias does — but
-# onto the closest commit under @ that actually carries a description, rather
-# than onto @- whatever it is.
+# onto the most recent commit at or under @ that actually carries a
+# description, rather than onto @- whatever it is.
 #
 # @- is very often an empty, undescribed commit: one `jj new` too many, or a
 # scratch change left on top. Tugging onto it hands `jj git push` a commit it
