@@ -5,7 +5,15 @@
 # caller has already changed into the workspace root: jj prints paths relative
 # to the current directory, and `glob:` filesets resolve against it too.
 
+use log.nu [warn]
+
 const HEX = '[0-9a-f]{8,64}'
+
+# Where `tug` moves a bookmark to: the closest ancestor of @ with a non-empty
+# description. `description(exact:"")` matches the undescribed commits — the
+# working copy, scratch changes, and the root commit — and `heads` of what is
+# left is the most recent one that is actually publishable.
+const TUG_TARGET = 'heads(::@- & ~description(exact:""))'
 
 export def root []: nothing -> string {
   let r = (^jj --ignore-working-copy root | complete)
@@ -122,10 +130,32 @@ export def fix [revset: string]: nothing -> bool {
   $r.exit_code == 0
 }
 
-# Move the nearest bookmark onto @-, the way the common `tug` alias does.
+# Move the nearest bookmark forward, the way the common `tug` alias does — but
+# onto the closest commit under @ that actually carries a description, rather
+# than onto @- whatever it is.
+#
+# @- is very often an empty, undescribed commit: one `jj new` too many, or a
+# scratch change left on top. Tugging onto it hands `jj git push` a commit it
+# refuses to publish ("Won't push commit … since it has no description"), so
+# the bookmark ends up parked somewhere it cannot be pushed from.
+#
 # Having no bookmark to move is not an error: `jj git push` will say so itself.
 export def tug []: nothing -> nothing {
-  ^jj bookmark move --from 'heads(::@- & bookmarks())' --to '@-' | complete | ignore
+  let targets = (revisions $TUG_TARGET)
+
+  # Under a merge with described commits on both sides there is no single
+  # "latest" one. Picking either would silently publish a branch the user did
+  # not name, so nothing is moved and the ambiguity is stated.
+  if ($targets | length) > 1 {
+    warn ("bookmark not moved: several described commits sit under @ — "
+      + ($targets | each { |t| $t.change } | str join ", ")
+      + "\n  move it yourself, or push with --no-tug")
+    return
+  }
+  if ($targets | is-empty) { return }
+
+  (^jj bookmark move --from 'heads(::@- & bookmarks())' --to ($targets | first | get commit)
+   | complete | ignore)
 }
 
 # Commit id of a bookmark, re-resolved after `jj fix` has rewritten history.

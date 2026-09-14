@@ -67,7 +67,7 @@ Runs the push stage over exactly what `jj git push` would publish, then
 publishes it. Unknown arguments go to jj untouched.
 
   --no-verify     publish without running anything
-  --no-tug        do not move the nearest bookmark onto @-
+  --no-tug        do not move the nearest bookmark forward
   --fix           run jj fix over the published range first
   --stage S       run a stage other than push
   --only NAME     run only this check \(repeatable)

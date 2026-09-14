@@ -58,7 +58,7 @@ def template []: nothing -> string {
     --allow-empty-description
     --dry-run                 # ask jj what would be pushed, run no checks
     --no-verify               # publish without running any check
-    --no-tug                  # do not move the nearest bookmark onto @-
+    --no-tug                  # do not move the nearest bookmark onto the last described commit
     --fix                     # run jj fix before checking
     --no-cache                # ignore remembered green results
     --stage: string@"nu-complete jj-ci stage" # stage to run (default: push)
