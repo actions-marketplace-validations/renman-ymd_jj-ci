@@ -1,0 +1,23 @@
+#!/bin/sh
+# Entry point. Keeps the jj alias free of any mention of nushell, and resolves
+# symlinks so `ln -s .../bin/jj-ci ~/.local/bin/jj-ci` works.
+set -eu
+
+self=$0
+while [ -L "$self" ]; do
+    link=$(readlink "$self")
+    case $link in
+        /*) self=$link ;;
+        *) self=$(dirname "$self")/$link ;;
+    esac
+done
+root=$(CDPATH= cd -- "$(dirname -- "$self")/.." && pwd)
+
+if ! command -v nu >/dev/null 2>&1; then
+    echo "jj-ci: nushell (nu) is not on PATH" >&2
+    exit 127
+fi
+
+# --no-config-file: a user's nushell config is for their shell, not for a
+# check runner, and it would be re-read on every revision.
+exec nu --no-config-file "$root/jj-ci.nu" "$@"

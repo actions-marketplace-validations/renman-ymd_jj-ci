@@ -1,0 +1,86 @@
+# jj-ci policy for a Rust crate or workspace.
+#
+# The git-hook equivalents, all moved to publish time:
+#
+#   .githooks/pre-commit   cargo fmt --check / check / clippy  -> stage "push"
+#   .githooks/commit-msg   <scope>: <subject>                  -> checks.message
+#   cargo fmt              the write half                      -> [format.rustfmt]
+#
+# Note on cost: the copy `jj run` checks out has no target/, so the first check
+# after a fresh clone is a cold build. The copy is reused between invocations,
+# so the second is incremental — and `jj ci --clean`-style throwaway builds are
+# not something jj-ci does behind your back.
+
+[jj-ci]
+version = 1
+
+[filesets]
+RUST = 'root-glob:"**/*.rs" ~ root-glob:"target/**"'
+MANIFESTS = 'root-glob:"**/Cargo.toml" | root-file:"Cargo.lock"'
+
+# Populates the registry cache in the copy before anything compiles, and only
+# when the lockfile has changed since that copy last did it.
+[bootstrap]
+command = ["cargo", "fetch", "--locked"]
+fingerprint = ["Cargo.lock"]
+
+# rustfmt formats stdin when told to emit to stdout, which is exactly the
+# contract `jj fix` wants. If your rustfmt.toml uses unstable options, this
+# needs a nightly rustfmt on PATH — `jj-ci doctor` will not catch that for you,
+# but `jj fix` will fail loudly rather than silently leave files unformatted.
+[format.rustfmt]
+command = ["rustfmt", "--emit", "stdout", "--edition", "2021"]
+patterns = ["RUST"]
+
+# ---------------------------------------------------------------------------
+# stage "push"
+# ---------------------------------------------------------------------------
+
+# <scope>: <subject>, at most 72 characters, subject in the imperative.
+# Anything longer than a one-liner belongs in .jj-ci/message.sh, invoked the
+# same way — the point is that jj-ci hands it the description and stays out.
+[checks.message]
+command = [
+  "awk",
+  "NR==1 { exit !(length($0) <= 72 && $0 ~ /^[a-z0-9\\/-]+: [a-z]/) }",
+]
+input = "description"
+
+[checks.fmt]
+command = ["cargo", "fmt", "--all", "--", "--check"]
+paths = ["RUST"]
+pass-files = false
+requires = ["cargo"]
+
+[checks.check]
+command = ["cargo", "check", "--all-targets", "--all-features"]
+paths = ["RUST", "MANIFESTS"]
+pass-files = false
+requires = ["cargo"]
+stages = ["push", "ci"]
+
+[checks.clippy]
+command = ["cargo", "clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+paths = ["RUST", "MANIFESTS"]
+pass-files = false
+requires = ["cargo"]
+stages = ["push", "ci"]
+
+# ---------------------------------------------------------------------------
+# stage "ci" — `jj ci --stage ci`
+# ---------------------------------------------------------------------------
+
+[checks.test]
+command = ["cargo", "test", "--all-features"]
+stages = ["ci"]
+requires = ["cargo"]
+
+# Tests that reach the network are not a property of a commit, so caching a
+# green result would remember the wrong thing.
+[checks.test-ignored]
+command = ["cargo", "test", "--all-features", "--", "--ignored"]
+stages = ["ci"]
+cache = false
+requires = ["cargo"]
+skip-if = ["sh", "-c", "test -n \"$JJ_CI_OFFLINE\""]
+skip-reason = "JJ_CI_OFFLINE is set"

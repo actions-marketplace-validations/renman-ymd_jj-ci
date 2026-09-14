@@ -1,0 +1,128 @@
+# jj-ci policy for a Bun + Turbo monorepo (NestJS backend, Next.js frontend).
+#
+# Modelled on a real repository, so every line here has a counterpart that used
+# to live somewhere else:
+#
+#   .husky/pre-commit         bun run typecheck && bunx lint-staged  -> stage "push"
+#   .husky/commit-msg         bunx commitlint --edit "$1"            -> checks.message
+#   lint-staged.config.mjs    the per-file globs                     -> [filesets] + paths
+#   .github/workflows/ci.yml  the six-task matrix                    -> stage "ci"
+#   prettier --write          the write half of lint-staged          -> [format.prettier]
+#
+# Filesets are root-relative on purpose. `glob:` is resolved against the current
+# directory, so `glob:"**/*.ts"` means something different when you run jj from
+# apps/backend/ than from the repo root. `root-glob:` is the only kind that
+# means the same thing everywhere.
+
+[jj-ci]
+version = 1
+
+# Named filesets, rendered into the repo's jj [fileset-aliases]. `jj fix`, the
+# checks below, and anything you type yourself (`jj diff -r @ PRETTIER`) then
+# resolve the same names, so a glob is written once and only once.
+[filesets]
+PRETTIER = '''
+  root-glob:"**/*.{ts,tsx,js,jsx,mjs,css,json,md,yml,yaml}"
+  ~ (root-glob:"**/node_modules/**" | root-glob:"**/dist/**"
+     | root-glob:"**/coverage/**" | root-glob:"**/.turbo/**"
+     | root-glob:"**/.next/**" | root-glob:"**/.direnv/**"
+     | root-glob:"**/next-env.d.ts"
+     | root-glob:"apps/backend/database/migrations/**"
+     | root-file:"bun.lock")
+'''
+BACKEND_TS = 'root-glob:"apps/backend/{src,scripts,test}/**/*.ts"'
+FRONTEND_TS = 'root-glob:"apps/frontend/**/*.{ts,tsx}" ~ root-glob:"**/node_modules/**"'
+TS = 'BACKEND_TS | FRONTEND_TS'
+
+# `jj run` checks each revision out into a copy that has no node_modules. The
+# copy is reused between invocations, so this is paid once per lockfile change
+# rather than once per check.
+[bootstrap]
+command = ["bun", "install", "--frozen-lockfile"]
+fingerprint = ["bun.lock", "package.json"]
+
+# The write half: rendered into the repo's [fix.tools], so `jj fix` formats
+# every mutable revision natively.
+[format.prettier]
+command = ["bunx", "prettier", "--stdin-filepath=$path"]
+patterns = ["PRETTIER"]
+
+# ---------------------------------------------------------------------------
+# stage "push" — what the git hooks used to enforce, now enforced at publish.
+# ---------------------------------------------------------------------------
+
+# A description is per-commit, so this one runs on every published revision.
+# input = "description" means: no checkout, cwd is the real working copy, and
+# the description arrives on stdin — exactly what `commitlint --edit` did.
+[checks.message]
+command = ["bunx", "commitlint"]
+input = "description"
+scope = "each"
+
+[checks.typecheck]
+command = ["bun", "run", "typecheck"]
+paths = ["TS"]
+pass-files = false # turbo decides what to typecheck; we only decide whether to run
+requires = ["bun"]
+stages = ["push", "ci"]
+
+[checks.format]
+command = ["bunx", "prettier", "--check"]
+paths = ["PRETTIER"]
+scope = "each"
+
+[checks.lint-backend]
+command = ["bunx", "eslint"]
+paths = ["BACKEND_TS"]
+
+# The root ESLint cannot load the react plugin that eslint-config-next pulls in,
+# so the web app lints itself, as a whole, exactly as lint-staged and CI do.
+# `paths` still decides *whether* to run it.
+[checks.lint-frontend]
+command = ["bun", "--filter=@tickettout/frontend", "run", "lint:check"]
+paths = ["FRONTEND_TS"]
+pass-files = false
+
+# ---------------------------------------------------------------------------
+# stage "ci" — the GitHub matrix, locally, on demand: `jj ci --stage ci`.
+# ---------------------------------------------------------------------------
+
+[checks.format-all]
+command = ["bun", "run", "format:check"]
+stages = ["ci"]
+
+[checks.lint-all]
+command = ["bun", "run", "lint:check"]
+stages = ["ci"]
+
+[checks.test]
+command = ["bun", "run", "test"]
+stages = ["ci"]
+
+# Testcontainers needs a live daemon, not just the client. Without one this is
+# reported as skipped rather than failed: CI runs it either way, and a check
+# that is red on every laptop is a check nobody reads.
+[checks.test-integration]
+command = ["bun", "run", "test:integration"]
+stages = ["ci"]
+cache = false
+skip-if = ["sh", "-c", "! docker info >/dev/null 2>&1"]
+skip-reason = "no docker daemon (testcontainers); CI runs it"
+
+[checks.build]
+command = ["bun", "run", "build"]
+stages = ["ci"]
+
+# The workflow builds the web app with the network unshared, to prove compiling
+# reaches out to nobody. That needs Linux and sudo, so on a mac it reports as
+# skipped instead of pretending to pass.
+[checks.build-web-offline]
+command = [
+  "sh",
+  "-c",
+  "sudo env \"PATH=$PATH\" unshare --net -- sh -c 'ip link set lo up && exec bun --filter=@tickettout/frontend run build'",
+]
+stages = ["ci"]
+cache = false
+skip-if = ["sh", "-c", "[ \"$(uname)\" != Linux ]"]
+skip-reason = "needs Linux network namespaces; CI runs it"
