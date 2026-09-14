@@ -1,0 +1,74 @@
+# jj-ci's policy for itself.
+#
+# A checks tool with no checks of its own would be a poor advertisement, and
+# these are not decorative: every error that cost a round trip while this was
+# being written was a parse error in a nushell file, which is exactly what
+# `parse` and `load` catch.
+#
+# There is no [format.*] section: nushell has no settled formatter to point
+# `jj fix` at. When one arrives, it goes here and `jj fix` picks it up.
+
+[jj-ci]
+version = 1
+
+[filesets]
+NU = 'root-glob:"**/*.nu"'
+TOML = 'root-glob:"**/*.toml"'
+SHELL = 'root-file:"bin/jj-ci"'
+
+# Conventional Commits, one line, at most 100 characters. Written inline
+# because it fits; anything longer belongs in .jj-ci/ as a script, invoked the
+# same way.
+#
+# The verdict is decided in END, not in the NR==1 rule: a commit with no
+# description at all produces no input, so a rule that only fires on line one
+# would never run and awk would exit 0 — a message check that passes precisely
+# when there is no message.
+[checks.message]
+command = [
+  "awk",
+  'NR==1 { ok = (length($0) <= 100 && $0 ~ /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: ./) } END { exit !ok }',
+]
+input = "description"
+
+# Every .nu file parses on its own — including one that nothing imports yet,
+# which `load` below would not notice.
+[checks.parse]
+command = [
+  "nu",
+  "--no-config-file",
+  "-c",
+  "glob '**/*.nu' --exclude ['**/.jj/**'] | each { |f| ^nu --no-config-file -c $'use ($f)' } | ignore",
+]
+paths = ["NU"]
+pass-files = false
+scope = "each"
+requires = ["nu"]
+
+# The real entry point: proves the sh shim resolves, nushell is found, and the
+# whole module graph parses together rather than file by file. Every published
+# commit should be runnable, hence scope = "each".
+[checks.load]
+command = ["./bin/jj-ci"]
+paths = ["NU", "SHELL"]
+pass-files = false
+scope = "each"
+requires = ["nu"]
+
+# The example configs are hand-edited and are the first thing anyone copies.
+[checks.toml]
+command = [
+  "nu",
+  "--no-config-file",
+  "-c",
+  "glob '**/*.toml' --exclude ['**/.jj/**'] | each { |f| open --raw $f | from toml } | ignore",
+]
+paths = ["TOML"]
+pass-files = false
+
+# Skipped, with a reason, on a machine without shellcheck — which is most of
+# them, and is the point of `requires`.
+[checks.shellcheck]
+command = ["shellcheck", "--shell=sh"]
+paths = ["SHELL"]
+requires = ["shellcheck"]
