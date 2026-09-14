@@ -246,11 +246,15 @@ as if the revset had excluded it.
 
 Two consequences worth knowing:
 
-- **A bookmark tugged onto `@` keeps following `@`.** Editing a file rewrites
-  the working-copy commit, and jj moves bookmarks onto rewritten commits — so
-  the bookmark tracks your edits and the remote falls behind until you push
-  again. That is ordinary jj behaviour, not something jj-ci adds, but it is the
-  price of `@` being a valid target.
+- **Whether the bookmark then follows `@` depends on your `immutable_heads()`.**
+  Editing a file rewrites the working-copy commit, and jj moves bookmarks onto
+  rewritten commits. But if the push makes that commit immutable — because the
+  bookmark is `trunk()`, or because your `immutable_heads()` includes
+  `remote_bookmarks()` — jj says *the working-copy commit became immutable* and
+  puts you on a fresh empty commit as the push finishes, so nothing follows.
+  Where it stays mutable, the bookmark does track your later edits and the
+  remote falls behind until you push again. Either way this is jj's own
+  behaviour, not something jj-ci adds.
 - **Under a merge, the target can be ambiguous.** With described commits on
   both sides and an undescribed `@`, the revset has no single answer. Rather
   than pick one and silently publish a branch you did not name, jj-ci moves
