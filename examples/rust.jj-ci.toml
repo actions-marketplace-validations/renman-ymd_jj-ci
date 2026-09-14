@@ -39,10 +39,14 @@ patterns = ["RUST"]
 # <scope>: <subject>, at most 72 characters, subject in the imperative.
 # Anything longer than a one-liner belongs in .jj-ci/message.sh, invoked the
 # same way — the point is that jj-ci hands it the description and stays out.
+#
+# The verdict is decided in END: a commit with no description produces no
+# input, so a rule that only fires on line one would never run and awk would
+# exit 0 — passing precisely when there is no message.
 [checks.message]
 command = [
   "awk",
-  "NR==1 { exit !(length($0) <= 72 && $0 ~ /^[a-z0-9\\/-]+: [a-z]/) }",
+  "NR==1 { ok = (length($0) <= 72 && $0 ~ /^[a-z0-9\\/-]+: [a-z]/) } END { exit !ok }",
 ]
 input = "description"
 

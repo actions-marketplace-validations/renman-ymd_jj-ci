@@ -86,9 +86,10 @@ alias it replaces.
 ## The config file
 
 `.jj-ci.toml` at the repository root (or `.jj-ci/config.toml`). It is
-versioned, so the policy travels with the code and is reviewed with it — and a
-check run against an old revision uses *that* revision's policy, because the
-file is part of the checkout.
+versioned, so the policy travels with the code and is reviewed with it. One run
+uses one policy: the file is read once, from your working copy, and applies to
+every revision in scope — checking a stack does not mean running each commit
+against whatever policy it happened to carry.
 
 ```toml
 [jj-ci]

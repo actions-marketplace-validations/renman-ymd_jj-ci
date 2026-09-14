@@ -79,7 +79,7 @@ paths = ["BACKEND_TS"]
 # so the web app lints itself, as a whole, exactly as lint-staged and CI do.
 # `paths` still decides *whether* to run it.
 [checks.lint-frontend]
-command = ["bun", "--filter=@tickettout/frontend", "run", "lint:check"]
+command = ["bun", "--filter=@example/frontend", "run", "lint:check"]
 paths = ["FRONTEND_TS"]
 pass-files = false
 
@@ -120,7 +120,7 @@ stages = ["ci"]
 command = [
   "sh",
   "-c",
-  "sudo env \"PATH=$PATH\" unshare --net -- sh -c 'ip link set lo up && exec bun --filter=@tickettout/frontend run build'",
+  "sudo env \"PATH=$PATH\" unshare --net -- sh -c 'ip link set lo up && exec bun --filter=@example/frontend run build'",
 ]
 stages = ["ci"]
 cache = false
