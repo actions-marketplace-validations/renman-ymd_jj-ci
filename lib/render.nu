@@ -1,15 +1,3 @@
-# Rendering the parts of the policy that jj itself must read.
-#
-# `fix.tools` and `fileset-aliases` are jj config, and since jj 0.44 the
-# repo-level config file lives outside the repository — unversioned and
-# per-machine. So the declarations live in .jj-ci.toml (versioned, reviewable)
-# and are rendered here into the repo config, between markers, whenever they
-# drift. Everything outside the markers is left alone.
-#
-# The block is emitted with dotted keys rather than [table] headers: a dotted
-# key does not change which table subsequent lines belong to, so appending our
-# block can never capture keys a human wrote afterwards.
-
 use log.nu [info, warn]
 use jj.nu
 
@@ -54,8 +42,6 @@ export def block [cfg: record]: nothing -> string {
   ] | str join "\n")
 }
 
-# Writes the block into the repo config when it differs from what is there.
-# Returns whether anything changed.
 export def ensure [root: string, cfg: record]: nothing -> bool {
   let wanted = (block $cfg)
   let dest = (jj repo-config-path)
@@ -64,8 +50,7 @@ export def ensure [root: string, cfg: record]: nothing -> bool {
   let existing = (extract $current)
   if $existing == $wanted { return false }
 
-  # Refuse rather than risk producing TOML that means something else: a table
-  # header outside our block would collide with the keys we are about to write.
+  # A table header outside our block would collide with the keys we write.
   let outside = (strip $current)
   if ($outside =~ '(?m)^\s*\[\s*(fix\.tools|fileset-aliases)') {
     error make {
@@ -74,12 +59,9 @@ export def ensure [root: string, cfg: record]: nothing -> bool {
     }
   }
 
-  # The block goes first, and this is not cosmetic: a dotted key belongs to
-  # whatever [table] header precedes it, so `fix.tools.x.command` written after
-  # someone's `[revset-aliases]` would be read as
-  # `revset-aliases.fix.tools.x.command` — valid TOML, silently the wrong
-  # setting. At the top of the file the root table is current, which is where
-  # these keys belong.
+  # The block goes first: a dotted key belongs to whatever [table] header
+  # precedes it, so after someone's `[revset-aliases]` these would be read as
+  # `revset-aliases.fix.tools.…` — valid TOML, silently the wrong setting.
   let body = (if ($outside | str trim | is-empty) { "" } else { "\n" + ($outside | str trim) + "\n" })
   let next = $wanted + "\n" + $body
 
@@ -87,8 +69,7 @@ export def ensure [root: string, cfg: record]: nothing -> bool {
   mkdir ($dest | path dirname)
   $next | save --force --raw $dest
 
-  # A config jj cannot parse would break every later command, so prove it
-  # before leaving it in place.
+  # A config jj cannot parse would break every later command.
   let probe = (^jj --ignore-working-copy config list --repo | complete)
   if $probe.exit_code != 0 {
     if ($"($dest).jj-ci.bak" | path exists) { cp $"($dest).jj-ci.bak" $dest } else { rm -f $dest }
@@ -103,7 +84,6 @@ export def ensure [root: string, cfg: record]: nothing -> bool {
   true
 }
 
-# Removes the managed block, leaving whatever a human put there.
 export def remove []: nothing -> bool {
   let dest = (jj repo-config-path)
   if not ($dest | path exists) { return false }
@@ -114,7 +94,6 @@ export def remove []: nothing -> bool {
   true
 }
 
-# The managed block as it currently stands in `text`, or null.
 def extract [text: string]: nothing -> any {
   let start = ($text | str index-of $BEGIN)
   if $start < 0 { return null }
@@ -123,7 +102,6 @@ def extract [text: string]: nothing -> any {
   $text | str substring $start..($end + ($END | str length) - 1)
 }
 
-# `text` without the managed block.
 def strip [text: string]: nothing -> string {
   let found = (extract $text)
   if $found == null { return $text }

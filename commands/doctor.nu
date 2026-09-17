@@ -1,5 +1,3 @@
-# `jj-ci doctor` — say what works here and what does not, before a push does.
-
 const LIB = path self "../lib"
 use $"($LIB)/log.nu" *
 use $"($LIB)/jj.nu"

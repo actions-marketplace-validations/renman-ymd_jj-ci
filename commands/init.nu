@@ -1,5 +1,3 @@
-# `jj-ci init` — put a starting .jj-ci.toml in the repository.
-#
 # Both templates start on the line after their opening delimiter: a nushell raw
 # string cannot begin with `#` directly after `r#'`. The leading newline is
 # trimmed before the file is written.

@@ -1,14 +1,3 @@
-# Remembering green results.
-#
-# A commit id is content-addressed, so "this commit passed this check" stays
-# true for as long as the check itself is unchanged — which is why the config
-# hash is part of the path. Entries are empty marker files rather than one
-# shared index, so parallel jobs never race over a write.
-#
-# What the cache cannot see: an upgraded formatter, a lockfile outside the
-# bootstrap fingerprint, a check that reads the network. Those are what
-# `--no-cache` and `cache = false` are for.
-
 const LAYOUT = "v1"
 
 export def dir [root: string, config_hash: string]: nothing -> string {
@@ -30,8 +19,6 @@ export def forget [cache_dir: string, commit: string, check: string]: nothing ->
   if ($f | path exists) { rm -f $f }
 }
 
-# Drop entries belonging to older versions of the config, so the cache does not
-# grow a directory per edit.
 export def prune [root: string, config_hash: string]: nothing -> nothing {
   let base = ($root | path join ".jj" "jj-ci" $LAYOUT)
   if not ($base | path exists) { return }
@@ -42,9 +29,7 @@ export def prune [root: string, config_hash: string]: nothing -> nothing {
   | ignore
 }
 
-# Bootstrap state is per working copy, not per commit: `jj run` reuses its
-# copies, so the marker records which fingerprint that directory was last
-# prepared for.
+# Keyed by working copy, not by commit: jj run reuses its copies.
 export def bootstrap-marker [root: string, slot: string]: nothing -> string {
   let d = ($root | path join ".jj" "jj-ci" $LAYOUT "bootstrap")
   mkdir $d

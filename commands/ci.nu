@@ -1,5 +1,3 @@
-# `jj ci` — run a stage over a revset.
-
 const LIB = path self "../lib"
 
 use $"($LIB)/log.nu" *
@@ -31,14 +29,11 @@ export def invoke [
   let cfg = (config load $root)
   render ensure $root $cfg
 
-  # --here is about what is on your disk right now, so there is exactly one
-  # revision to talk about and no checkout to make.
   let revset = (
     if $here { "@" } else if $revisions != null { $revisions } else { (default-revset) }
   )
 
-  # Fix first, and only resolve revisions afterwards: `jj fix` rewrites the
-  # commits it touches, so ids read before it would no longer exist.
+  # Before resolving revisions: jj fix rewrites the commits it touches.
   if $fix and ($cfg.format | columns | is-not-empty) {
     title "jj fix"
     if not (jj fix $revset) { return 1 }

@@ -1,21 +1,13 @@
-# Output helpers.
-#
-# Verdict lines always say how the verdict was reached — ran, cached, or
-# skipped and why. A run that prints nothing but green ticks must never hide
-# the fact that nothing actually executed.
-
 export def title [msg: string] { print $"(ansi cyan_bold)($msg)(ansi reset)" }
 export def info [msg: string] { print $"  (ansi dark_gray)·(ansi reset) ($msg)" }
 export def warn [msg: string] { print $"(ansi yellow)warning:(ansi reset) ($msg)" }
 export def err [msg: string] { print -e $"(ansi red_bold)error:(ansi reset) ($msg)" }
 
-# One line per (revision, check). `how` is the provenance: a duration, the word
-# "cached", or a skip reason.
 export def verdict [
-  rev: string # short change id, or "" when the check is not revision-bound
+  rev: string
   check: string
   status: string # pass | fail | skip
-  how: string
+  how: string # a duration, "cached", or a skip reason
 ]: nothing -> nothing {
   let mark = match $status {
     "pass" => $"(ansi green)✓(ansi reset)"
@@ -29,7 +21,6 @@ export def verdict [
   print $"  (ansi yellow)($rev | fill -a l -w 8)(ansi reset)  ($check | fill -a l -w 16) ($mark)  ($detail)"
 }
 
-# Final summary. Returns the exit code the caller should use.
 export def summary [results: list<record>]: nothing -> int {
   let failed = ($results | where status == "fail")
   let skipped = ($results | where status == "skip")

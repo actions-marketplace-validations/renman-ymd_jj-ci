@@ -1,12 +1,6 @@
-# `jj-ci completions nushell` — teach nushell about the two jj aliases.
-#
-# Nushell sees `jj` as one external binary, so `jj ci --<TAB>` completes
-# nothing and `jj ci --help` prints jj's help rather than ours. An `extern`
-# declaration for the two-word command fixes both: completion for the flags,
-# and `help jj ci` rendering a real page.
-#
-# jj generates its own completions with `jj util completion nushell`, which
-# overwrites one file and cannot know about aliases — hence a second file.
+# For the jj aliases only: nushell sees `jj` as one external binary and cannot
+# see through it. `jj util completion nushell` overwrites its own file and
+# knows nothing of aliases, hence a second one.
 
 const LIB = path self "../lib"
 use $"($LIB)/log.nu" [err, info]

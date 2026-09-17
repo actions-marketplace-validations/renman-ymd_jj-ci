@@ -1,6 +1,3 @@
-# `jj push` — the gate. Everything jj-ci does not recognise is forwarded to
-# `jj git push` untouched, so `jj push -b foo --remote upstream` keeps working.
-
 const LIB = path self "../lib"
 
 use $"($LIB)/log.nu" *
@@ -18,7 +15,7 @@ export def invoke [self_cmd: list<string>, rest: list<string>]: nothing -> int {
   cd $root
   jj snapshot
 
-  # A dry run is a question, not a publication: answer it and stop.
+  # A dry run is a question, not a publication.
   if "--dry-run" in $args.passthru {
     return (push-now $args.passthru)
   }
@@ -27,7 +24,6 @@ export def invoke [self_cmd: list<string>, rest: list<string>]: nothing -> int {
 
   let file = (config find $root)
   if $file == null {
-    # No policy in this repo: behave exactly like the alias it replaced.
     return (push-now $args.passthru)
   }
 
@@ -39,11 +35,8 @@ export def invoke [self_cmd: list<string>, rest: list<string>]: nothing -> int {
   let cfg = (config load $root)
   render ensure $root $cfg
 
-  # Before the dry run, deliberately: rewriting moves the bookmarks, so what
-  # gets published has to be resolved afterwards — the commit ids from before
-  # the fix no longer exist. The revset is `jj fix`'s own default rather than
-  # the published range, which is not known yet; it may format a little more
-  # than this push publishes, exactly as a bare `jj fix` would.
+  # Before the dry run: rewriting moves the bookmarks. The revset is jj fix's
+  # own default, the published range not being known yet.
   if $args.own.fix and ($cfg.format | columns | is-not-empty) {
     title "jj fix"
     if not (jj fix "reachable(@, mutable())") { return 1 }
@@ -71,8 +64,7 @@ export def invoke [self_cmd: list<string>, rest: list<string>]: nothing -> int {
   }
 
   # ~root(): with nothing on the remote yet, `remote_bookmarks()..x` reduces to
-  # `::x`, which includes jj's virtual root commit — a commit with no
-  # description that no check has anything useful to say about.
+  # `::x`, which includes jj's virtual root commit.
   let revset = $"remote_bookmarks\(\)..\(($tips | str join ' | ')) ~ root\(\)"
   let revs = (jj revisions $revset)
   if ($revs | is-empty) {

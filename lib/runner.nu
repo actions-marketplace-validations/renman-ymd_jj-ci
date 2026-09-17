@@ -1,14 +1,3 @@
-# Orchestration: report what needs no work, then do the rest.
-#
-# Checks that need the real working copy (a description to validate, a tool
-# that wants git) run here. Everything else is handed to one `jj run
-# --ignore-changes`, which checks each revision out into a private copy — your
-# working copy is never touched and never has to be clean.
-#
-# `jj run` stops at the first revision whose command fails, and revisions are
-# visited oldest first, so a broken stack reports the commit that broke it
-# rather than every commit after it.
-
 use log.nu *
 use jj.nu
 use cache.nu
@@ -32,7 +21,6 @@ export def execute [
 
   mut results = []
 
-  # Machine-level verdicts: stated once, not once per revision.
   for s in $p.skipped {
     verdict "—" $s.check "skip" $s.reason
     $results = ($results | append { check: $s.check, status: "skip" })
@@ -55,12 +43,10 @@ export def execute [
 
   let by_name = ($cfg.checks | reduce --fold {} { |c, acc| $acc | insert $c.name $c })
 
-  # --here collapses the distinction: everything runs against what is on disk.
   let local = (if $opts.here { $todo } else { $todo | where workspace })
   let isolated = (if $opts.here { [] } else { $todo | where { |e| not $e.workspace } })
 
-  # Every check of a revision runs, so one pass tells you everything that is
-  # wrong with it; the next revision is only attempted if this one held.
+  # Every check of a revision runs; the next revision only if this one held.
   for commit in ($revs | get commit | where { |c| $c in ($local | get commit) }) {
     mut broke = false
     for e in ($local | where commit == $commit) {
@@ -112,12 +98,10 @@ export def execute [
   let revset = ($isolated | get commit | uniq | str join " | ")
   let jobs = ([$opts.jobs 1] | math max)
 
-  # --root so the command always starts at the top of the copy, whatever
-  # directory jj-ci was invoked from. --passthrough keeps the verdict lines
-  # live, at the cost of one job at a time; -j is only honoured without it.
+  # --passthrough keeps the verdict lines live, at the cost of one job at a
+  # time; -j is only honoured without it.
   let passthrough = (if $jobs == 1 { ["--passthrough"] } else { ["--jobs" ($jobs | into string)] })
-  # --quiet keeps jj's own "Nothing changed." out of the report; the checks do
-  # the talking.
+  # --quiet keeps jj's own "Nothing changed." out of the report.
   let run_args = (
     ["run" "--quiet" "--ignore-changes" "--root"]
     ++ $passthrough
@@ -125,15 +109,10 @@ export def execute [
     ++ $self_cmd
     ++ ["__revision"]
   )
-  # No pipe: --passthrough hands the child process the real terminal, so
-  # capturing jj here would swallow every verdict line the inner runner prints.
-  # try/catch is how a nonzero exit is observed without capturing.
-  #
-  # jj's own stderr is set aside rather than shown: when a check fails, jj also
-  # reports "the command '…mod.nu __revision' failed", which is our plumbing
-  # leaking into a report that has already said what went wrong. It is printed
-  # only when jj failed for some other reason. Under --verbose the checks write
-  # to that same stderr, so it stays attached.
+  # No pipe: --passthrough hands the child the real terminal, so capturing jj
+  # here would swallow every verdict line. jj's own stderr is set aside because
+  # a failing check also makes jj report our plumbing by name; --verbose leaves
+  # it attached, since the checks write there.
   let errfile = ($scratch | path join "jj-run.err")
   let ok = (with-env { JJ_CI_PLAN: $plan_file } {
     if $opts.verbose {
@@ -158,7 +137,6 @@ export def execute [
   rm -rf $scratch
 
   if (not $ok) and ($collected | where status == "fail" | is-empty) {
-    # jj failed for a reason of its own rather than because a check did.
     err (if ($jj_err | is-empty) { "jj run failed before any check reported" } else { $jj_err })
     return 1
   }
@@ -168,8 +146,8 @@ export def execute [
   summary $results
 }
 
-# Runs inside the isolated copy that `jj run` prepared: no jj calls, no
-# guessing — everything it needs is in the plan file.
+# Runs inside the isolated copy jj run prepared; everything it needs is in the
+# plan file.
 export def revision []: nothing -> int {
   let plan = (open --raw $env.JJ_CI_PLAN | from json)
   let commit = $env.JJ_COMMIT_ID
@@ -180,8 +158,7 @@ export def revision []: nothing -> int {
     if not (bootstrap $plan) { return 1 }
   }
 
-  # Every check of this revision runs; the nonzero exit is what stops jj run
-  # from moving on to the next one.
+  # The nonzero exit is what stops jj run moving on to the next revision.
   mut results = []
   mut failed = false
   for e in $entries {
@@ -197,9 +174,8 @@ export def revision []: nothing -> int {
   if $failed { 1 } else { 0 }
 }
 
-# The copy has no gitignored state — no node_modules, no target, no .venv. The
-# copy is reused between invocations though, so this is paid once per
-# fingerprint change rather than once per check.
+# The copy has no gitignored state, but is reused between invocations, so this
+# is paid once per fingerprint change.
 def bootstrap [plan: record]: nothing -> bool {
   let marker = ($plan.marker_dir | path join ($env.PWD | hash sha256 | str substring 0..15))
   let want = (

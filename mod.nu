@@ -1,31 +1,7 @@
 #!/usr/bin/env nu
 
-# jj-ci — local checks for jujutsu repositories.
-#
-# jj has no hooks, and a pre-commit hook would not fit it: a commit exists the
-# moment a file is saved, and intermediate commits are allowed to be broken.
-# The moment that corresponds to a git pre-commit hook is publication, so that
-# is where the checks are: `jj push` gates `jj git push`.
-#
-# What gets checked is declared per repository in a versioned .jj-ci.toml.
-# This program knows nothing about any language or tool.
-#
-# Two entry points, one file:
-#
-#   use ~/Scripts/jj-ci      a nushell module — `jj-ci ci`, `jj-ci push`, …
-#                            with native help and completions
-#   bin/jj-ci                a symlink to this file, which jj's aliases run as
-#                            a script — `jj ci`, `jj push`
-#
-# The exported commands serve the module and signal failure by raising; the
-# unexported `main …` subcommands serve the script and turn that into an exit
-# code. `main` subcommands do not need to be exported to work as a script, and
-# leaving them unexported keeps `jj-ci main ci` out of the module's namespace.
-#
-# ROOT is expanded rather than taken as-is: reached through bin/jj-ci, a bare
-# `path self` reports the symlink's own directory, and every `use` below would
-# look for bin/lib and bin/commands. `path expand` resolves the link.
-
+# Reached through the bin/jj-ci symlink, a bare `path self` reports the
+# symlink's own directory, and every `use` below would look for bin/lib.
 const ROOT = (path self | path expand | path dirname)
 const SELF = (path self | path expand)
 
@@ -33,18 +9,11 @@ use $"($ROOT)/commands"
 use $"($ROOT)/lib/log.nu" [err]
 use $"($ROOT)/lib/runner.nu"
 
-# The argv that re-invokes this file inside `jj run`, once per revision.
-# --no-config-file is not a guardrail against your config: it avoids loading an
-# interactive shell's furniture — completions, prompt, directory hooks — inside
-# a checkout, N times per run.
 def self-cmd []: nothing -> list<string> {
   [$nu.current-exe "--no-config-file" $SELF]
 }
 
-# Exit codes are the script's currency, not the shell's. Interactively a
-# command that returned 0 would print a stray `0`, so the module raises instead
-# and `main` turns the raise back into an exit code. --unspanned keeps it to one
-# line rather than pointing at a line of jj-ci nobody needs to read.
+# Interactively, returning an exit code would print a stray `0`.
 def raise [code: int, msg: string]: nothing -> nothing {
   if $code != 0 { error make --unspanned { msg: $msg } }
 }
@@ -96,7 +65,6 @@ export def install [
 }
 
 # Shell completions for the jj aliases. Nushell only — see --help.
-# Returned, not printed, so it can be piped straight into a file.
 export def completions [
   shell: string = "nushell" # nushell
   --ci-alias: string = "ci" # name you gave the ci alias
@@ -142,10 +110,8 @@ publishes it. Unknown arguments go to jj untouched.
   --dry-run       forwarded to jj; asks what would be pushed and runs nothing"
 }
 
-# --- script entry points -----------------------------------------------------
-#
-# Unexported on purpose: `main <sub>` is how nushell dispatches a script's
-# subcommands, and not exporting them keeps `jj-ci main ci` out of the module.
+# Unexported on purpose: exporting them would put `jj-ci main ci` in the
+# module's namespace, and a script dispatches `main <sub>` either way.
 
 def "main ci" [
   --stage (-s): string = "push"
@@ -191,7 +157,6 @@ def "main doctor" []: nothing -> nothing {
   try { doctor } catch { exit 1 }
 }
 
-# Internal: the per-revision runner `jj run` invokes inside an isolated copy.
 def "main __revision" []: nothing -> nothing {
   if ($env | get -o JJ_CI_PLAN) == null {
     err "__revision is run by jj-ci itself, inside jj run"

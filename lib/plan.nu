@@ -1,14 +1,3 @@
-# Deciding what actually has to run.
-#
-# Everything that does not need a checkout is settled here, in the real
-# working copy: stage membership, `requires`, `skip-if`, which paths a check
-# matches, and which results are already cached. What survives is the only
-# thing worth checking out a revision for.
-#
-# `requires` and `skip-if` are properties of the machine, not of a revision —
-# a docker daemon does not come and go between commits — so they are evaluated
-# once rather than once per revision.
-
 use jj.nu
 use cache.nu
 
@@ -44,9 +33,8 @@ export def build [
     })
 
     for r in $scope_revs {
-      # A tip-scoped check is about the state being published, so the paths it
-      # reasons about are those the whole published range touches, not just the
-      # tip commit's own diff.
+      # A tip-scoped check is about the state being published, so it reasons
+      # about the whole range, not the tip commit's own diff.
       let revset = (if $c.scope == "tip" { $range } else { $r.commit })
 
       let files = (if ($c.paths | is-empty) or ($c.input == "description") {
@@ -62,8 +50,6 @@ export def build [
         }
       })
 
-      # A check with `paths` is about those paths: nothing matching means there
-      # is nothing for it to say.
       if ($c.paths | is-not-empty) and ($c.input != "description") and ($files | is-empty) {
         $entries = ($entries | append {
           commit: $r.commit, change: $r.change, check: $c.name,
@@ -90,8 +76,7 @@ export def build [
   }
 }
 
-# Why a check cannot run here, if it cannot. Missing tools and skip-if are the
-# same answer to the user — "not on this machine" — with different causes.
+# Properties of the machine, not of a revision, so evaluated once.
 def environment-status [c: record]: nothing -> record {
   let missing = ($c.requires | where { |bin| which $bin | is-empty })
   if ($missing | is-not-empty) {

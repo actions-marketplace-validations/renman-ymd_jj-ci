@@ -1,10 +1,3 @@
-# Loading and validating .jj-ci.toml.
-#
-# The file is versioned in the repository, so it is the one place a policy is
-# written down. Everything jj needs that cannot live in a versioned file — the
-# fix tools, the fileset aliases — is rendered from here into the repo-level jj
-# config (see render.nu).
-
 use log.nu [warn]
 use detect.nu
 
@@ -15,7 +8,6 @@ const CHECK_KEYS = [
 const FORMAT_KEYS = [command patterns enabled line-range-arg run-tool-if-zero-line-ranges]
 const TOP_KEYS = [jj-ci filesets bootstrap format checks]
 
-# Returns the config file path, or null when the repo has not opted in.
 export def find [root: string]: nothing -> any {
   let candidates = [
     ($root | path join ".jj-ci.toml")
@@ -102,8 +94,7 @@ def normalize-checks [table: record, file: string]: nothing -> table {
         error make { msg: $"($file): checks.($name).input must be \"files\" or \"description\"" }
       }
 
-      # A description belongs to one commit, so validating it only at the tip
-      # would leave the commits underneath unchecked.
+      # A description belongs to one commit, so the tip alone is not enough.
       let scope = ($c | get -o scope | default (if $input == "description" { "each" } else { "tip" }))
       if $scope not-in ["tip" "each"] {
         error make { msg: $"($file): checks.($name).scope must be \"tip\" or \"each\"" }
@@ -111,9 +102,7 @@ def normalize-checks [table: record, file: string]: nothing -> table {
 
       let paths = ($c | get -o paths | default [])
 
-      # Reading a description needs no checkout; anything else is checked in an
-      # isolated copy unless the check asks for the real working copy (a tool
-      # that needs git, or gitignored state the copy does not have).
+      # Reading a description needs no checkout.
       let workspace = ($c | get -o workspace | default ($input == "description"))
 
       {
