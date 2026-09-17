@@ -45,7 +45,8 @@ pass-files = false
 scope = "each"
 requires = ["nu"]
 
-# The real entry point: proves the sh shim resolves, nushell is found, and the
+# The real entry point: proves bin/jj-ci's symlink resolves, that mod.nu expands
+# it back to the real directory rather than looking for bin/lib, and that the
 # whole module graph parses together rather than file by file. Every published
 # commit should be runnable, hence scope = "each".
 [checks.load]

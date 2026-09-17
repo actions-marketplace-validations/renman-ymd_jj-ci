@@ -130,7 +130,7 @@ export def execute [
   # try/catch is how a nonzero exit is observed without capturing.
   #
   # jj's own stderr is set aside rather than shown: when a check fails, jj also
-  # reports "the command '…jj-ci.nu __revision' failed", which is our plumbing
+  # reports "the command '…mod.nu __revision' failed", which is our plumbing
   # leaking into a report that has already said what went wrong. It is printed
   # only when jj failed for some other reason. Under --verbose the checks write
   # to that same stderr, so it stays attached.

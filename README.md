@@ -32,9 +32,34 @@ on `jj run --ignore-changes` and `--passthrough`, which landed in jj 0.44, so
 0.44 is the practical floor; the nushell floor has not been measured, but the
 code uses raw strings, `def --wrapped` and `get -o`, none of which are ancient.
 
-Two jj aliases are the whole installation. jj refuses to load command aliases
-from `--config`, `--config-file` or `-R` — they must be in a real config file —
-and the user-level one is what makes them available in every repository:
+### Two ways in, one file
+
+jj-ci is a nushell module whose root `mod.nu` is also a runnable script.
+`bin/jj-ci` is a symlink to it, so both reach the same code:
+
+```nushell
+use ~/Scripts/jj-ci    # jj-ci ci, jj-ci push, … with native help and completion
+```
+
+```bash
+~/Scripts/jj-ci/bin/jj-ci ci    # the same commands as a script
+```
+
+Add the `use` line to your nushell config and `jj-ci <TAB>` completes on its
+own, with real signatures — nushell knows the module. The jj aliases below go
+through jj rather than through nushell, so they still want the generated
+`extern` file.
+
+One consequence of the `use` line worth knowing: from then on a syntax error in
+jj-ci is a syntax error in your shell startup, not just a broken jj-ci. The
+`parse` and `load` checks in this repo's own `.jj-ci.toml` exist partly for
+that.
+
+### The jj aliases
+
+Two jj aliases gate `jj push`. jj refuses to load command aliases from
+`--config`, `--config-file` or `-R` — they must be in a real config file — and
+the user-level one is what makes them available in every repository:
 
 ```bash
 ~/Scripts/jj-ci/bin/jj-ci install
@@ -50,12 +75,16 @@ said `jj-ci` than an absolute path.
 
 ### Nushell completions
 
+This is for the **`jj ci` / `jj push` aliases only** — `jj-ci …` as a module
+needs nothing, since nushell has the real signatures.
+
 Nushell sees `jj` as one external binary, so `jj ci --<TAB>` completes nothing
 and `jj ci --help` prints *jj's* help. An `extern` declaration for the two-word
-command fixes both:
+command fixes both. The command returns the module rather than printing it, so
+it pipes:
 
-```bash
-jj-ci completions nushell > ~/.config/nushell/completions/jj-ci.nu
+```nushell
+jj-ci completions nushell | save -f ~/.config/nushell/completions/jj-ci.nu
 # then, in your config: source ~/.config/nushell/completions/jj-ci.nu
 ```
 

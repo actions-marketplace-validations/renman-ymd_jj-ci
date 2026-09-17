@@ -11,18 +11,17 @@
 const LIB = path self "../lib"
 use $"($LIB)/log.nu" [err, info]
 
-export def invoke [shell: string, ci_alias: string, push_alias: string]: nothing -> int {
+# Returns the module rather than printing it, so that as a nushell command it
+# can be piped: `jj-ci completions nushell | save ~/.config/nushell/…`. Run as a
+# script, nushell prints the return value, so a shell redirect still works.
+export def invoke [shell: string, ci_alias: string, push_alias: string]: nothing -> string {
   if $shell not-in ["nushell" "nu"] {
-    err $"no completions for ($shell) — jj-ci ships nushell only"
     info "the flags are stable and documented in the README; other shells are a small script away"
-    return 1
+    error make --unspanned { msg: $"no completions for ($shell) — jj-ci ships nushell only" }
   }
-  print (
-    (template)
-    | str replace --all "@CI@" $ci_alias
-    | str replace --all "@PUSH@" $push_alias
-  )
-  0
+  (template)
+  | str replace --all "@CI@" $ci_alias
+  | str replace --all "@PUSH@" $push_alias
 }
 
 # A def rather than a const: nushell resolves consts in source order, and this
