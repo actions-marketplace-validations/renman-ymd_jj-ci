@@ -1,4 +1,8 @@
-name: 'jj-ci'
+# Not plain 'jj-ci': a Marketplace listing may not take the name of an existing
+# GitHub user, and there is an account called jj-ci. The repository, the binary
+# and `uses: renman-ymd/jj-ci@v1` are unaffected — this string is the listing
+# title and nothing else.
+name: 'Jujutsu CI (jj-ci)'
 description: "Run a repository's .jj-ci.toml checks over the revisions a push or pull request adds."
 author: 'renman-ymd'
 
