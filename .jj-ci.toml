@@ -105,5 +105,16 @@ command = [
 ]
 paths = ["YAML"]
 pass-files = false
-stages = ["push", "ci"]
 requires = ["nu"]
+stages = ["push", "ci"]
+
+# The README points at five pages under docs/ and they point back. A rotted
+# link is only ever found by a reader, and by then it has been wrong for weeks.
+#
+# No `paths`: a link breaks when the file it points *at* moves or is deleted,
+# which is not a change to any .md. The check costs milliseconds, so it runs on
+# everything rather than guessing at what could have broken it.
+[checks.docs]
+command = ["nu", "--no-config-file", "scripts/check-links.nu"]
+requires = ["nu"]
+stages = ["push", "ci"]
