@@ -305,11 +305,26 @@ remote bookmarks, that is your unpushed work, the same set `jj fix` and `jj
 run` default to.
 
 `--stage S`, `-r REVSET`, `--here`, `--fix`, `--only A,B`, `--no-cache`,
-`--jobs N`, `--verbose`.
+`--jobs N`, `--verbose`, `--strict`.
+
+`--strict` turns a check that *cannot run here* into a failure instead of a
+skip, and makes an empty stage an error. `requires` and `skip-if` exist so a
+laptop without docker still gets a useful gate; somewhere that is supposed to
+have everything, the same skip is a hole. A `paths` skip is left alone — that
+one means the check ran and found nothing of its own to do.
 
 `--here` checks the working copy as it is, with no checkout and no bootstrap —
 the tight loop, where your `node_modules` already exists. It is weaker than the
 default by construction: it describes your disk, not a commit.
+
+### `jj-ci checks [stage] [--json]`
+
+The checks a stage holds, without running any of them. A table by default, and
+in nushell a real one you can filter. `--json` gives one line, which is what
+the GitHub action's matrix is built from.
+
+`requires` and `skip-if` are deliberately *not* evaluated: the machine asking
+for the list is usually not the one that will run them.
 
 ### `jj-ci init [--detect] [--force]`, `jj-ci doctor`, `jj-ci install`, `jj-ci completions nushell`
 
@@ -317,6 +332,122 @@ default by construction: it describes your disk, not a commit.
 installed, whether the repository is colocated (which decides whether a
 git-based runner can work at all), which checks exist in which stage, whether
 the rendered jj config is in sync, and which required tools are missing.
+
+## On GitHub Actions
+
+The same `.jj-ci.toml` drives the remote build, so the list of things that must
+be green stops existing in two places. The action colocates a jj repository onto
+the checkout, works out which revisions the event added, and runs a stage over
+them.
+
+```yaml
+- uses: actions/checkout@v5
+  with:
+    fetch-depth: 0
+- uses: renman-ymd/jj-ci@v1
+  with:
+    stage: ci
+```
+
+`fetch-depth: 0` is not decoration. A shallow checkout hides everything before
+the cut, and the range worth checking usually reaches past the tip; the action
+warns when it sees one.
+
+**Which revisions.** Left alone, the range comes from the event: a pull
+request's own commits (`base..head`, so the merge commit GitHub checks out is
+not itself judged), the pushed range on a `push`, `base_sha..head_sha` in a
+merge queue. A new branch, a force push and `workflow_dispatch` have no usable
+range and fall back to `@-`, the commit that was checked out. `revisions:`
+overrides all of that, and an explicit revset naming nothing is an error rather
+than a quiet pass.
+
+**Strict by default.** With every check skipped for a missing tool, jj-ci would
+otherwise print `ok — 0 passed, 5 skipped` and exit 0 — a green build that ran
+nothing. The action passes `--strict`, so a check that cannot run on the runner
+fails there. Give the runner the tool, or set `strict: false`.
+
+### One job per check
+
+`jj ci` runs a stage in one process. GitHub would rather run several jobs at
+once, and a separate required status check per gate is worth having, so the
+matrix can be read out of the same file:
+
+```yaml
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+      revisions: ${{ steps.plan.outputs.revisions }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - id: plan
+        uses: renman-ymd/jj-ci/plan@v1
+        with: { stage: ci }
+
+  check:
+    needs: plan
+    if: needs.plan.outputs.count != '0'
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJson(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: oven-sh/setup-bun@v2
+      - uses: renman-ymd/jj-ci@v1
+        with:
+          stage: ci
+          only: ${{ matrix.check }}
+          revisions: ${{ needs.plan.outputs.revisions }}
+```
+
+`plan` emits `[{check, doc}]`, so `matrix.check` names both the job and the one
+check it runs. Passing `revisions` through is what keeps every job judging the
+same commits instead of each deriving its own. The `if:` guard is not optional:
+a matrix with no entries is an error, not an empty run.
+
+The cost is one extra job plus a jj and nushell install in each of the others.
+Below a handful of slow checks, the single job is cheaper.
+
+**What stays in the workflow, on purpose.** Toolchains (`setup-bun`,
+`setup-node`), `services:`, anything wanting runner privileges, concurrency,
+draft-skipping, permissions. `.jj-ci.toml` says *what* runs; the workflow says
+*where*. Putting toolchain setup in the TOML would be a workflow DSL rebuilt
+inside a config file.
+
+`[bootstrap]` covers the one piece of setup that really is just a command, and
+it runs *inside* the copy `jj run` checks out — which has no `node_modules`. A
+workflow that also installs at the repository root therefore pays for it twice;
+either let `bootstrap` do it, or mark the checks `workspace = true`.
+
+### Inputs
+
+| Input | Default | Meaning |
+| --- | --- | --- |
+| `stage` | `push` | stage to run |
+| `revisions` | derived | revset to check |
+| `only` | all | comma-separated check names |
+| `strict` | `true` | a check that cannot run here fails |
+| `no-cache` | `false` | ignore remembered results |
+| `jobs` | `1` | revisions checked in parallel |
+| `verbose` | `false` | stream check output |
+| `working-directory` | `.` | where the checkout is |
+| `jj-version`, `nu-version` | `latest` | a version, `latest`, or `preinstalled` |
+| `token` | `github.token` | reads the release tags, to dodge the anonymous API limit |
+
+Both tools are installed from their own release tarballs, so nothing is
+compiled and no other action is involved. Pin them if you would rather a jj
+release could not change your build. Linux and macOS runners only: `bin/jj-ci`
+is a symlink and the checks are nushell, neither of which survives a Windows
+runner intact.
+
+The action outputs `revisions`, the revset it settled on.
 
 ## What this deliberately does not do
 
@@ -330,6 +461,13 @@ the rendered jj config is in sync, and which required tools are missing.
   that "docker" means a live daemon. Write that as `skip-if`.
 - **No runner autodetection unless asked.** `jj-ci.autodetect = true`, or
   `jj-ci init --detect` to write the stanza out where you can edit it.
+- **No reading checks out of a GitHub workflow.** The detectable runners —
+  pre-commit, lefthook, hk, prek — are declarative command lists with stable
+  schemas. A workflow is a program: matrices to expand, setup steps to
+  discard, a step whose whole body is `sudo unshare --net`. Guessing there
+  would produce checks that silently run the wrong thing, and the gate has to
+  work before anything reaches GitHub anyway. The arrow points the other way:
+  the workflow reads the TOML.
 
 ## Prior art
 

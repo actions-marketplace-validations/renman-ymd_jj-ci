@@ -1,0 +1,92 @@
+name: 'jj-ci'
+description: "Run a repository's .jj-ci.toml checks over the revisions a push or pull request adds."
+author: 'renman-ymd'
+
+branding:
+  icon: 'check-circle'
+  color: 'purple'
+
+inputs:
+  stage:
+    description: 'Stage to run: push, ci, or any name the repository invents.'
+    default: 'push'
+  revisions:
+    description: >-
+      Revset to check. Left empty, it is derived from the event: the pull
+      request range, the pushed range, or the checked-out commit.
+    default: ''
+  only:
+    description: 'Run only these checks, comma-separated. Empty runs the whole stage.'
+    default: ''
+  strict:
+    description: >-
+      Fail on a check that cannot run here instead of skipping it. `requires`
+      and `skip-if` exist so a laptop without docker still gets a useful gate;
+      on a runner the same skip is a hole, so this defaults to true.
+    default: 'true'
+  no-cache:
+    description: 'Ignore results remembered from an earlier run of the same commit.'
+    default: 'false'
+  jobs:
+    description: 'Revisions to check in parallel. Above 1, check output is captured rather than streamed.'
+    default: '1'
+  verbose:
+    description: "Stream each check's output instead of showing it only on failure."
+    default: 'false'
+  working-directory:
+    description: 'Directory holding the checkout.'
+    default: '.'
+  jj-version:
+    description: "jj release to install: a version, `latest`, or `preinstalled` to use what is already on PATH."
+    default: 'latest'
+  nu-version:
+    description: 'nushell release to install, same three forms.'
+    default: 'latest'
+  token:
+    description: 'Token used to read the jj and nushell release tags, to avoid the unauthenticated API rate limit.'
+    default: ${{ github.token }}
+
+outputs:
+  revisions:
+    description: 'The revset that was checked.'
+    value: ${{ steps.prepare.outputs.revisions }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install jj and nushell
+      shell: bash
+      run: $GITHUB_ACTION_PATH/action/install-tools.sh
+      env:
+        JJ_VERSION: ${{ inputs.jj-version }}
+        NU_VERSION: ${{ inputs.nu-version }}
+        GH_TOKEN: ${{ inputs.token }}
+
+    - name: Resolve the revisions to check
+      id: prepare
+      shell: bash
+      run: $GITHUB_ACTION_PATH/action/prepare-repo.sh
+      env:
+        ACTION_ROOT: ${{ github.action_path }}
+        WORKDIR: ${{ inputs.working-directory }}
+        INPUT_REVISIONS: ${{ inputs.revisions }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_AFTER: ${{ github.sha }}
+
+    - name: Run checks
+      shell: bash
+      run: $GITHUB_ACTION_PATH/action/run-checks.sh
+      env:
+        WORKDIR: ${{ inputs.working-directory }}
+        STAGE: ${{ inputs.stage }}
+        REVISIONS: ${{ steps.prepare.outputs.revisions }}
+        ONLY: ${{ inputs.only }}
+        STRICT: ${{ inputs.strict }}
+        NO_CACHE: ${{ inputs.no-cache }}
+        JOBS: ${{ inputs.jobs }}
+        VERBOSE: ${{ inputs.verbose }}

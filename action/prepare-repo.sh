@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# Turn the checkout into a jj repository and work out which revisions to check.
+#
+# Writes `revisions` to $GITHUB_OUTPUT and JJ_CI_BIN to $GITHUB_ENV.
+set -euo pipefail
+
+WORKDIR=${WORKDIR:-.}
+INPUT_REVISIONS=${INPUT_REVISIONS:-}
+EVENT_NAME=${EVENT_NAME:-}
+ZERO=0000000000000000000000000000000000000000
+
+die() {
+  printf '::error::%s\n' "$*" >&2
+  exit 1
+}
+
+warn() { printf '::warning::%s\n' "$*"; }
+
+cd "$WORKDIR" || die "working-directory does not exist: $WORKDIR"
+
+[ -d .git ] || die "$PWD is not a git checkout — this action runs after actions/checkout"
+
+# A runner has no identity, and jj wants one before it will build a working-copy
+# commit. These are never written to anything.
+export JJ_USER=${JJ_USER:-jj-ci}
+export JJ_EMAIL=${JJ_EMAIL:-jj-ci@users.noreply.github.com}
+
+if [ -d .jj ]; then
+  printf 'already a jj repository\n'
+else
+  jj git init >/dev/null 2>&1 || die "jj git init failed in $PWD"
+  printf 'colocated a jj repository onto the checkout\n'
+fi
+
+if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+  warn "this checkout is shallow, so commits before the cut are invisible to jj; check out with fetch-depth: 0 if the range to check is wider than one commit"
+fi
+
+# Number of revisions a revset names, or nothing at all if it does not parse.
+revision_count() {
+  jj log --no-graph --revisions "$1" --template '"x\n"' 2>/dev/null | wc -l | tr -d ' '
+}
+
+derive_revset() {
+  case "$EVENT_NAME" in
+    pull_request | pull_request_target)
+      # The checkout is the merge commit; the pull request's own commits are
+      # the range between its base and its head.
+      if [ -n "${PR_BASE_SHA:-}" ] && [ -n "${PR_HEAD_SHA:-}" ]; then
+        printf '%s..%s' "$PR_BASE_SHA" "$PR_HEAD_SHA"
+      fi
+      ;;
+    merge_group)
+      if [ -n "${MERGE_BASE_SHA:-}" ] && [ -n "${MERGE_HEAD_SHA:-}" ]; then
+        printf '%s..%s' "$MERGE_BASE_SHA" "$MERGE_HEAD_SHA"
+      fi
+      ;;
+    push)
+      # `before` is all zeroes when the branch is new, and names a commit that
+      # no longer exists after a force push.
+      if [ -n "${PUSH_BEFORE:-}" ] && [ "$PUSH_BEFORE" != "$ZERO" ] && [ -n "${PUSH_AFTER:-}" ]; then
+        printf '%s..%s' "$PUSH_BEFORE" "$PUSH_AFTER"
+      fi
+      ;;
+  esac
+}
+
+if [ -n "$INPUT_REVISIONS" ]; then
+  revset=$INPUT_REVISIONS
+  [ "$(revision_count "$revset")" != 0 ] ||
+    die "the revisions input names nothing in this repository: $revset"
+else
+  revset=$(derive_revset)
+  if [ -n "$revset" ] && [ "$(revision_count "$revset")" = 0 ]; then
+    warn "$EVENT_NAME gave a range this checkout cannot resolve ($revset); falling back to the checked-out commit. A shallow checkout or a force push is the usual cause."
+    revset=
+  fi
+  # `@` is the empty working-copy commit jj adds on top, so the commit that was
+  # checked out is its parent.
+  [ -n "$revset" ] || revset='@-'
+fi
+
+# bin/jj-ci is a symlink to mod.nu; if whatever fetched the action flattened the
+# symlink or dropped the exec bit, the module file itself is still there and
+# run-checks.sh hands it to nushell instead.
+entry=$ACTION_ROOT/bin/jj-ci
+if [ ! -x "$entry" ]; then
+  warn "$entry is not executable; falling back to mod.nu"
+  entry=$ACTION_ROOT/mod.nu
+fi
+
+printf 'revisions=%s\n' "$revset" >>"$GITHUB_OUTPUT"
+printf 'JJ_CI_ENTRY=%s\n' "$entry" >>"$GITHUB_ENV"
+printf 'checking %s revision(s) in %s\n' "$(revision_count "$revset")" "$revset"

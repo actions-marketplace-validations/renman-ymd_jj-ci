@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # jj-ci's own checks are sub-second, so fanning them out over five runners
+  # would cost far more than it saves. One job, the action's default path.
+  checks:
+    name: checks (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      # fetch-depth: 0 because the range to check reaches back past the tip, and
+      # a commit the clone cut off is a commit jj cannot see.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # The ubuntu image ships shellcheck and the macOS one does not. Under
+      # strict, a check that cannot run is a failure, so it is installed rather
+      # than skipped.
+      - name: Install shellcheck
+        if: runner.os == 'macOS'
+        run: brew install shellcheck
+
+      - uses: ./
+        with:
+          stage: push
+
+  # The fan-out path this repository does not itself use. Without this it would
+  # ship having never run.
+  plan:
+    name: plan emits a usable matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: plan
+        uses: ./plan
+        with:
+          stage: push
+
+      - name: The matrix matches what .jj-ci.toml declares
+        env:
+          MATRIX: ${{ steps.plan.outputs.matrix }}
+          COUNT: ${{ steps.plan.outputs.count }}
+          REVISIONS: ${{ steps.plan.outputs.revisions }}
+        run: |
+          set -euo pipefail
+
+          # Every check in this repository's policy is in the push stage, so the
+          # count is derivable from the file rather than pinned to a number that
+          # goes stale the next time a check is added.
+          declared=$(grep -c '^\[checks\.' .jj-ci.toml)
+
+          test "$COUNT" = "$declared" ||
+            { echo "::error::plan listed $COUNT checks, .jj-ci.toml declares $declared"; exit 1; }
+
+          echo "$MATRIX" | jq -e --argjson n "$declared" 'length == $n' >/dev/null
+          echo "$MATRIX" | jq -e 'all(.[]; has("check") and has("doc"))' >/dev/null
+
+          test -n "$REVISIONS" || { echo "::error::plan emitted no revisions"; exit 1; }
+
+          echo "$declared checks over $REVISIONS"

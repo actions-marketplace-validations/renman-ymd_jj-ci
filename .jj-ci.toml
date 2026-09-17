@@ -14,7 +14,9 @@ version = 1
 [filesets]
 NU = 'root-glob:"**/*.nu"'
 TOML = 'root-glob:"**/*.toml"'
-SHELL = 'root-file:"bin/jj-ci"'
+YAML = 'root-glob:"**/*.{yml,yaml}"'
+SHELL = 'root-glob:"action/*.sh"'
+ENTRY = 'root-file:"bin/jj-ci"'
 
 # Conventional Commits, one line, at most 100 characters. Written inline
 # because it fits; anything longer belongs in .jj-ci/ as a script, invoked the
@@ -51,7 +53,7 @@ requires = ["nu"]
 # commit should be runnable, hence scope = "each".
 [checks.load]
 command = ["./bin/jj-ci"]
-paths = ["NU", "SHELL"]
+paths = ["NU", "ENTRY"]
 pass-files = false
 scope = "each"
 requires = ["nu"]
@@ -67,9 +69,29 @@ command = [
 paths = ["TOML"]
 pass-files = false
 
+# The GitHub action's steps are shell, and a workflow is the one place where a
+# quoting mistake cannot be caught by running it locally.
+#
+# No --shell: the scripts carry a bash shebang and shellcheck reads it. Forcing
+# sh would report every array and every `local` as an error.
+#
 # Skipped, with a reason, on a machine without shellcheck — which is most of
-# them, and is the point of `requires`.
+# them, and is the point of `requires`. `jj ci --strict`, which the action runs,
+# turns that skip into a failure.
 [checks.shellcheck]
-command = ["shellcheck", "--shell=sh"]
+command = ["shellcheck"]
 paths = ["SHELL"]
 requires = ["shellcheck"]
+
+# action.yml is the published interface of the marketplace action, and a typo in
+# it is only discovered by a runner refusing the workflow.
+[checks.yaml]
+command = [
+  "nu",
+  "--no-config-file",
+  "-c",
+  "glob '**/*.{yml,yaml}' --exclude ['**/.jj/**'] | each { |f| open --raw $f | from yaml } | ignore",
+]
+paths = ["YAML"]
+pass-files = false
+requires = ["nu"]

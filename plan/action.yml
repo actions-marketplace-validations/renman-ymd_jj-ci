@@ -1,0 +1,69 @@
+name: 'jj-ci plan'
+description: 'Read a .jj-ci.toml and emit its checks as a job matrix, so one GitHub job runs one check.'
+author: 'renman-ymd'
+
+branding:
+  icon: 'list'
+  color: 'purple'
+
+inputs:
+  stage:
+    description: 'Stage to list: push, ci, or any name the repository invents.'
+    default: 'push'
+  working-directory:
+    description: 'Directory holding the checkout.'
+    default: '.'
+  jj-version:
+    description: "jj release to install: a version, `latest`, or `preinstalled`."
+    default: 'latest'
+  nu-version:
+    description: 'nushell release to install, same three forms.'
+    default: 'latest'
+  token:
+    description: 'Token used to read the jj and nushell release tags.'
+    default: ${{ github.token }}
+
+outputs:
+  matrix:
+    description: 'JSON list of {check, doc}, ready for strategy.matrix.include.'
+    value: ${{ steps.plan.outputs.matrix }}
+  count:
+    description: 'How many checks the stage holds. Guard the fan-out job with this: a matrix with no entries is an error, not an empty run.'
+    value: ${{ steps.plan.outputs.count }}
+  revisions:
+    description: 'The revset derived from the event, to pass to every check job so they all judge the same commits.'
+    value: ${{ steps.prepare.outputs.revisions }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install jj and nushell
+      shell: bash
+      run: $GITHUB_ACTION_PATH/../action/install-tools.sh
+      env:
+        JJ_VERSION: ${{ inputs.jj-version }}
+        NU_VERSION: ${{ inputs.nu-version }}
+        GH_TOKEN: ${{ inputs.token }}
+
+    - name: Resolve the revisions to check
+      id: prepare
+      shell: bash
+      run: $GITHUB_ACTION_PATH/../action/prepare-repo.sh
+      env:
+        ACTION_ROOT: ${{ github.action_path }}/..
+        WORKDIR: ${{ inputs.working-directory }}
+        EVENT_NAME: ${{ github.event_name }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        MERGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
+        MERGE_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_AFTER: ${{ github.sha }}
+
+    - name: Read the stage
+      id: plan
+      shell: bash
+      run: $GITHUB_ACTION_PATH/../action/plan-matrix.sh
+      env:
+        WORKDIR: ${{ inputs.working-directory }}
+        STAGE: ${{ inputs.stage }}
