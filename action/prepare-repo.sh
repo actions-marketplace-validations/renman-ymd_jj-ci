@@ -80,14 +80,12 @@ else
   [ -n "$revset" ] || revset='@-'
 fi
 
-# bin/jj-ci is a symlink to mod.nu; if whatever fetched the action flattened the
-# symlink or dropped the exec bit, the module file itself is still there and
-# run-checks.sh hands it to nushell instead.
-entry=$ACTION_ROOT/bin/jj-ci
-if [ ! -x "$entry" ]; then
-  warn "$entry is not executable; falling back to mod.nu"
-  entry=$ACTION_ROOT/mod.nu
-fi
+# mod.nu, never the bin/jj-ci symlink beside it. Whatever fetches an action
+# materialises that symlink as a *copy*, and a copy resolves `path self` to
+# bin/, where there are no modules to import. The copy is executable, so testing
+# for that proves nothing; the file that is always right is the real one.
+entry=$ACTION_ROOT/mod.nu
+[ -f "$entry" ] || die "$entry is missing — the action was not fetched whole"
 
 printf 'revisions=%s\n' "$revset" >>"$GITHUB_OUTPUT"
 printf 'JJ_CI_ENTRY=%s\n' "$entry" >>"$GITHUB_ENV"

@@ -13,8 +13,6 @@ args=(ci --stage "${STAGE:-push}" --revisions "$REVISIONS" --jobs "${JOBS:-1}")
 [ -z "${ONLY:-}" ] || args+=(--only "$ONLY")
 [ "${NO_CACHE:-false}" != true ] || args+=(--no-cache)
 
-if [ -x "$JJ_CI_ENTRY" ]; then
-  exec "$JJ_CI_ENTRY" "${args[@]}"
-else
-  exec nu "$JJ_CI_ENTRY" "${args[@]}"
-fi
+# Through nu rather than the shebang: an exec bit is one more thing that has to
+# survive being fetched, and nushell is on PATH by the time this runs.
+exec nu "$JJ_CI_ENTRY" "${args[@]}"

@@ -7,11 +7,7 @@ set -euo pipefail
 
 cd "${WORKDIR:-.}"
 
-if [ -x "$JJ_CI_ENTRY" ]; then
-  matrix=$("$JJ_CI_ENTRY" checks "${STAGE:-push}" --json)
-else
-  matrix=$(nu "$JJ_CI_ENTRY" checks "${STAGE:-push}" --json)
-fi
+matrix=$(nu "$JJ_CI_ENTRY" checks "${STAGE:-push}" --json)
 
 count=$(printf '%s' "$matrix" | grep -o '"check":' | wc -l | tr -d ' ')
 
