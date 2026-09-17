@@ -14,6 +14,10 @@ permissions:
   contents: read
 
 jobs:
+  # The "ci" stage, over the checked-out state. actions/checkout fetches one
+  # commit unless told otherwise, and that is the right amount here: these
+  # checks judge a tree, not a history.
+  #
   # jj-ci's own checks are sub-second, so fanning them out over five runners
   # would cost far more than it saves. One job, the action's default path.
   checks:
@@ -26,11 +30,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
 
     steps:
-      # fetch-depth: 0 because the range to check reaches back past the tip, and
-      # a commit the clone cut off is a commit jj cannot see.
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       # The ubuntu image ships shellcheck and the macOS one does not. Under
       # strict, a check that cannot run is a failure, so it is installed rather
@@ -40,14 +40,25 @@ jobs:
         run: brew install shellcheck
 
       - uses: ./
-        with:
-          stage: push
 
   # `uses: ./` runs the action straight out of the workspace. Everyone else gets
   # it as a separate download, where $GITHUB_ACTION_PATH points elsewhere and
-  # bin/jj-ci has to survive as a symlink. That is the path worth proving.
+  # bin/jj-ci arrives as a copy rather than a symlink. That is the path worth
+  # proving, and the only one that caught that copy.
   consumer:
     name: as a published action
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: renman-ymd/jj-ci@main
+
+  # The one job that needs history, and the reason it is a job of its own: a
+  # description belongs to a commit, so this is the only stage here with
+  # anything to say about a range.
+  commits:
+    name: commit messages
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -56,9 +67,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: renman-ymd/jj-ci@main
+      - uses: ./
         with:
-          stage: push
+          stage: commits
 
   # The fan-out path this repository does not itself use. Without this it would
   # ship having never run.
@@ -69,13 +80,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
 
       - id: plan
         uses: ./plan
-        with:
-          stage: push
 
       - name: The matrix matches what .jj-ci.toml declares
         env:
@@ -85,17 +92,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Every check in this repository's policy is in the push stage, so the
-          # count is derivable from the file rather than pinned to a number that
-          # goes stale the next time a check is added.
-          declared=$(grep -c '^\[checks\.' .jj-ci.toml)
+          # Re-derived from the file by a different route than the one under
+          # test: this reads the TOML directly, plan goes through jj-ci's own
+          # config loader. Agreeing means something; pinning a number would not.
+          # nu is on PATH because the plan action put it there.
+          expected=$(nu --no-config-file -c \
+            'open --raw .jj-ci.toml | from toml | get checks | transpose name c
+             | where { |r| "ci" in ($r.c | get -o stages | default ["push"]) }
+             | get name | sort | str join ","')
 
-          test "$COUNT" = "$declared" ||
-            { echo "::error::plan listed $COUNT checks, .jj-ci.toml declares $declared"; exit 1; }
+          got=$(echo "$MATRIX" | jq -r '[.[].check] | sort | join(",")')
 
-          echo "$MATRIX" | jq -e --argjson n "$declared" 'length == $n' >/dev/null
+          test "$got" = "$expected" ||
+            { echo "::error::plan listed [$got], the policy declares [$expected]"; exit 1; }
+
+          echo "$MATRIX" | jq -e 'length > 0' >/dev/null
           echo "$MATRIX" | jq -e 'all(.[]; has("check") and has("doc"))' >/dev/null
+          test "$COUNT" = "$(echo "$MATRIX" | jq 'length')"
+          test -n "$REVISIONS"
 
-          test -n "$REVISIONS" || { echo "::error::plan emitted no revisions"; exit 1; }
-
-          echo "$declared checks over $REVISIONS"
+          echo "stage ci: [$got] over $REVISIONS"

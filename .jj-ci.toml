@@ -32,6 +32,10 @@ command = [
   'NR==1 { ok = (length($0) <= 100 && $0 ~ /^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9-]+\))?!?: ./) } END { exit !ok }',
 ]
 input = "description"
+# Not in "ci": a description belongs to one commit, so this is the one check
+# here that has to see a range, and a range is the one thing a depth-1 CI job
+# does not have. It gets its own stage, and its own job.
+stages = ["push", "commits"]
 
 # Every .nu file parses on its own — including one that nothing imports yet,
 # which `load` below would not notice.
@@ -44,19 +48,24 @@ command = [
 ]
 paths = ["NU"]
 pass-files = false
+# "each" is a bisectability claim, not a cost: it says every published commit
+# parses on its own. Over the one revision a depth-1 CI job checks it runs
+# exactly once, so the scope is free there and only bites on a wide range —
+# which is the local gate, where the stack is a handful of commits.
 scope = "each"
 requires = ["nu"]
+stages = ["push", "ci"]
 
 # The real entry point: proves bin/jj-ci's symlink resolves, that mod.nu expands
 # it back to the real directory rather than looking for bin/lib, and that the
-# whole module graph parses together rather than file by file. Every published
-# commit should be runnable, hence scope = "each".
+# whole module graph parses together rather than file by file.
 [checks.load]
 command = ["./bin/jj-ci"]
 paths = ["NU", "ENTRY"]
 pass-files = false
 scope = "each"
 requires = ["nu"]
+stages = ["push", "ci"]
 
 # The example configs are hand-edited and are the first thing anyone copies.
 [checks.toml]
@@ -68,6 +77,7 @@ command = [
 ]
 paths = ["TOML"]
 pass-files = false
+stages = ["push", "ci"]
 
 # The GitHub action's steps are shell, and a workflow is the one place where a
 # quoting mistake cannot be caught by running it locally.
@@ -82,6 +92,7 @@ pass-files = false
 command = ["shellcheck"]
 paths = ["SHELL"]
 requires = ["shellcheck"]
+stages = ["push", "ci"]
 
 # action.yml is the published interface of the marketplace action, and a typo in
 # it is only discovered by a runner refusing the workflow.
@@ -94,4 +105,5 @@ command = [
 ]
 paths = ["YAML"]
 pass-files = false
+stages = ["push", "ci"]
 requires = ["nu"]

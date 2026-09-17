@@ -8,8 +8,13 @@ branding:
 
 inputs:
   stage:
-    description: 'Stage to run: push, ci, or any name the repository invents.'
-    default: 'push'
+    description: >-
+      Stage to run. Defaults to `ci`, never `push`: the push stage is the local
+      gate, and what it holds routinely differs from what a build should
+      enforce. With `strict` on, a stage that selects no checks is an error, so
+      a repository that has no `ci` stage is told so rather than quietly
+      running the wrong one.
+    default: 'ci'
   revisions:
     description: >-
       Revset to check. Left empty, it is derived from the event: the pull

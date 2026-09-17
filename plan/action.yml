@@ -8,8 +8,8 @@ branding:
 
 inputs:
   stage:
-    description: 'Stage to list: push, ci, or any name the repository invents.'
-    default: 'push'
+    description: 'Stage to list. Defaults to `ci`, to match the action it feeds.'
+    default: 'ci'
   working-directory:
     description: 'Directory holding the checkout.'
     default: '.'

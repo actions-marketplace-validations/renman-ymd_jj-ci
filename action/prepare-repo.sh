@@ -32,9 +32,7 @@ else
   printf 'colocated a jj repository onto the checkout\n'
 fi
 
-if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
-  warn "this checkout is shallow, so commits before the cut are invisible to jj; check out with fetch-depth: 0 if the range to check is wider than one commit"
-fi
+shallow=$(git rev-parse --is-shallow-repository)
 
 # Number of revisions a revset names, or nothing at all if it does not parse.
 revision_count() {
@@ -69,10 +67,16 @@ if [ -n "$INPUT_REVISIONS" ]; then
   revset=$INPUT_REVISIONS
   [ "$(revision_count "$revset")" != 0 ] ||
     die "the revisions input names nothing in this repository: $revset"
+elif [ "$shallow" = true ]; then
+  # actions/checkout fetches one commit unless told otherwise, and a checkout
+  # with no history has no range to reason about. Checking the state that was
+  # checked out is what such a job means, so this is normal, not a problem.
+  revset='@-'
+  printf 'shallow checkout: checking the checked-out state only\n'
 else
   revset=$(derive_revset)
   if [ -n "$revset" ] && [ "$(revision_count "$revset")" = 0 ]; then
-    warn "$EVENT_NAME gave a range this checkout cannot resolve ($revset); falling back to the checked-out commit. A shallow checkout or a force push is the usual cause."
+    warn "$EVENT_NAME gave a range this full checkout cannot resolve ($revset); falling back to the checked-out commit. A force push is the usual cause."
     revset=
   fi
   # `@` is the empty working-copy commit jj adds on top, so the commit that was

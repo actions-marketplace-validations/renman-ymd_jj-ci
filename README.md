@@ -342,18 +342,27 @@ them.
 
 ```yaml
 - uses: actions/checkout@v5
-  with:
-    fetch-depth: 0
 - uses: renman-ymd/jj-ci@v1
-  with:
-    stage: ci
 ```
 
-`fetch-depth: 0` is not decoration. A shallow checkout hides everything before
-the cut, and the range worth checking usually reaches past the tip; the action
-warns when it sees one.
+**The stage is `ci`, not `push`.** The push stage is your local gate, and what
+it holds routinely differs from what a build should enforce — it is the one
+that carries the `skip-if`s written for a laptop. With `strict` on, a stage
+selecting no checks is an error, so a repository with no `ci` stage is told so
+rather than quietly handed the wrong one.
 
-**Which revisions.** Left alone, the range comes from the event: a pull
+**Depth.** The example takes `actions/checkout`'s default, one commit, and that
+is usually right: a check with the default `scope = "tip"` judges a tree, not a
+history. On a shallow checkout the action checks the state that was checked
+out, says so, and does not pretend to reason about a range.
+
+Reach for `fetch-depth: 0` only when a stage contains something that needs
+more than the tip — `input = "description"`, or any `scope = "each"` check you
+actually want run over every commit. That is normally a job of its own, and
+the split is the usual one: build and test shallow, the history-shaped checks
+separately.
+
+**Which revisions.** Given history, the range comes from the event: a pull
 request's own commits (`base..head`, so the merge commit GitHub checks out is
 not itself judged), the pushed range on a `push`, `base_sha..head_sha` in a
 merge queue. A new branch, a force push and `workflow_dispatch` have no usable
@@ -382,10 +391,8 @@ jobs:
       revisions: ${{ steps.plan.outputs.revisions }}
     steps:
       - uses: actions/checkout@v5
-        with: { fetch-depth: 0 }
       - id: plan
         uses: renman-ymd/jj-ci/plan@v1
-        with: { stage: ci }
 
   check:
     needs: plan
@@ -398,11 +405,9 @@ jobs:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v5
-        with: { fetch-depth: 0 }
       - uses: oven-sh/setup-bun@v2
       - uses: renman-ymd/jj-ci@v1
         with:
-          stage: ci
           only: ${{ matrix.check }}
           revisions: ${{ needs.plan.outputs.revisions }}
 ```
@@ -430,7 +435,7 @@ either let `bootstrap` do it, or mark the checks `workspace = true`.
 
 | Input | Default | Meaning |
 | --- | --- | --- |
-| `stage` | `push` | stage to run |
+| `stage` | `ci` | stage to run |
 | `revisions` | derived | revset to check |
 | `only` | all | comma-separated check names |
 | `strict` | `true` | a check that cannot run here fails |
