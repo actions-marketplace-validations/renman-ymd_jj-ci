@@ -1,4 +1,5 @@
 export use ci.nu
+export use checks.nu
 export use push.nu
 export use init.nu
 export use install.nu

@@ -16,6 +16,7 @@ export def invoke [
   only: list<string>
   verbose: bool
   jobs: int
+  strict: bool
 ]: nothing -> int {
   let root = (jj root)
   cd $root
@@ -41,6 +42,10 @@ export def invoke [
 
   let revs = (jj revisions $revset)
   if ($revs | is-empty) {
+    if $strict {
+      err $"strict: no revisions in ($revset)"
+      return 1
+    }
     warn $"no revisions in ($revset)"
     return 0
   }
@@ -52,6 +57,7 @@ export def invoke [
   title $"($stage): ((plural ($revs | length) 'revision')) in ($revset)"
   runner execute $root $cfg $stage $revs $tips $revset $self_cmd {
     no_cache: $no_cache, only: $only, verbose: $verbose, here: $here, jobs: $jobs
+    strict: $strict
   }
 }
 

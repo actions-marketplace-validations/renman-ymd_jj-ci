@@ -78,7 +78,7 @@ export def invoke [self_cmd: list<string>, rest: list<string>]: nothing -> int {
 
   let code = (runner execute $root $cfg $args.own.stage $revs $tips $revset $self_cmd {
     no_cache: $args.own.no_cache, only: $args.own.only, verbose: $args.own.verbose,
-    here: false, jobs: $args.own.jobs
+    here: false, jobs: $args.own.jobs, strict: false
   })
   if $code != 0 {
     print $"(ansi dark_gray)push aborted — publish anyway with `jj push --no-verify`(ansi reset)"

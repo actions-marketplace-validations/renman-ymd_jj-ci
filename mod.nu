@@ -28,12 +28,22 @@ export def ci [
   --only: string = "" # run only these checks (comma-separated)
   --jobs (-j): int = 1 # revisions to check in parallel; above 1, output is captured
   --verbose # stream each check's output instead of showing it only on failure
+  --strict # a check that cannot run here fails instead of being skipped
 ]: nothing -> nothing {
   raise (
     commands ci invoke (self-cmd) $stage $revisions $here $fix $no_cache (
       $only | split row "," | where { |s| ($s | str trim) != "" }
-    ) $verbose $jobs
+    ) $verbose $jobs $strict
   ) "jj-ci: checks failed"
+}
+
+# Checks a stage would run here, without running any of them.
+export def checks [
+  stage: string = "push" # stage to list
+  --json # one line of JSON, for a CI matrix
+]: nothing -> any {
+  let rows = (commands checks invoke $stage)
+  if $json { $rows | to json --raw } else { $rows }
 }
 
 # Run the push stage over what would be published, then `jj git push`.
@@ -84,6 +94,7 @@ export def main []: nothing -> nothing {
   (ansi cyan)jj ci(ansi reset) [--stage S] [-r REVSET] [--here] [--fix]    run a stage
   (ansi cyan)jj push(ansi reset) [jj git push args…] [--no-verify]        gate, then publish
 
+  (ansi cyan)jj-ci checks(ansi reset) [stage] [--json]          list a stage without running it
   (ansi cyan)jj-ci init(ansi reset) [--detect]                 write a .jj-ci.toml here
   (ansi cyan)jj-ci install(ansi reset) [--format nix|toml]     the two jj aliases to add
   (ansi cyan)jj-ci completions(ansi reset) nushell             completions for those aliases
@@ -122,11 +133,17 @@ def "main ci" [
   --only: string = ""
   --jobs (-j): int = 1
   --verbose
+  --strict
 ]: nothing -> nothing {
   try {
     (ci --stage $stage --revisions $revisions --here=$here --fix=$fix
-        --no-cache=$no_cache --only $only --jobs $jobs --verbose=$verbose)
+        --no-cache=$no_cache --only $only --jobs $jobs --verbose=$verbose
+        --strict=$strict)
   } catch { exit 1 }
+}
+
+def "main checks" [stage: string = "push", --json]: nothing -> nothing {
+  try { print (checks $stage --json=$json) } catch { |e| err $e.msg; exit 1 }
 }
 
 def --wrapped "main push" [...rest: string]: nothing -> nothing {

@@ -12,18 +12,29 @@ export def execute [
   tips: list<string>
   range: string
   self_cmd: list<string> # how to re-invoke jj-ci inside jj run
-  opts: record # { no_cache, only, verbose, here, jobs }
+  opts: record # { no_cache, only, verbose, here, jobs, strict }
 ]: nothing -> int {
   let cache_dir = (cache dir $root $cfg.hash)
   cache prune $root $cfg.hash
 
   let p = (plan build $root $cfg $stage $revs $tips $range $cache_dir $opts.only $opts.no_cache)
 
+  # Nothing to run is a green run, which on a remote runner is indistinguishable
+  # from a stage that passed.
+  if $opts.strict and ($p.skipped | is-empty) and ($p.entries | is-empty) {
+    err $"strict: stage ($stage) selected no checks at all"
+    return 1
+  }
+
   mut results = []
 
+  # A check that cannot run here is a hole in the gate, not a result. Locally
+  # that is the point of `requires`; on a runner it is the whole coverage.
+  # A `paths` skip below is different: the check ran and found nothing to do.
   for s in $p.skipped {
-    verdict "—" $s.check "skip" $s.reason
-    $results = ($results | append { check: $s.check, status: "skip" })
+    let status = (if $opts.strict { "fail" } else { "skip" })
+    verdict "—" $s.check $status $s.reason
+    $results = ($results | append { check: $s.check, status: $status })
   }
 
   for e in ($p.entries | where state == "skip") {

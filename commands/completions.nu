@@ -35,6 +35,7 @@ def template []: nothing -> string {
     --only: string            # run only these checks (comma-separated)
     --jobs(-j): int           # revisions to check in parallel (output is captured above 1)
     --verbose                 # stream each check output instead of showing it on failure
+    --strict                  # a check that cannot run here fails instead of skipping
     --help(-h)                # print help
   ]
 
@@ -63,6 +64,13 @@ def template []: nothing -> string {
 
   # jj-ci: local checks for jj repositories
   export extern "jj-ci" [
+    --help(-h)
+  ]
+
+  # List the checks a stage would run, without running them
+  export extern "jj-ci checks" [
+    stage?: string@"nu-complete jj-ci stage"
+    --json                    # one line of JSON, for a CI matrix
     --help(-h)
   ]
 
