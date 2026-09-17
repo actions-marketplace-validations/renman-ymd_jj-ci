@@ -50,6 +50,10 @@ own, with real signatures — nushell knows the module. The jj aliases below go
 through jj rather than through nushell, so they still want the generated
 `extern` file.
 
+The command prefix is the **directory's basename**: clone this somewhere called
+`jj-ci` or your commands will be named after wherever you put it. `use <dir> as
+jj-ci` does not help — `as` renames an export, not a module.
+
 One consequence of the `use` line worth knowing: from then on a syntax error in
 jj-ci is a syntax error in your shell startup, not just a broken jj-ci. The
 `parse` and `load` checks in this repo's own `.jj-ci.toml` exist partly for
