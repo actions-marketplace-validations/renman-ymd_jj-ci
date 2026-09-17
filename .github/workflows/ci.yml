@@ -43,6 +43,23 @@ jobs:
         with:
           stage: push
 
+  # `uses: ./` runs the action straight out of the workspace. Everyone else gets
+  # it as a separate download, where $GITHUB_ACTION_PATH points elsewhere and
+  # bin/jj-ci has to survive as a symlink. That is the path worth proving.
+  consumer:
+    name: as a published action
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: renman-ymd/jj-ci@main
+        with:
+          stage: push
+
   # The fan-out path this repository does not itself use. Without this it would
   # ship having never run.
   plan:
